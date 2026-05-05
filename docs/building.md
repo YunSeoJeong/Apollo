@@ -113,6 +113,40 @@ dependencies=(
 pacman -S "${dependencies[@]}"
 ```
 
+##### Local release installer
+Windows에서 릴리즈 패키지와 동일하게 동작하는 installer를 만들 때는 이 절차를 사용한다. 이 방식으로 만든 NSIS
+installer에는 service helper, Start Menu shortcut, uninstall entry, firewall script, driver script, service autostart
+등록이 포함된다.
+
+아래 명령은 PowerShell, Git Bash, Visual Studio Developer Prompt가 아니라 반드시 **MSYS2 UCRT64**에서 실행한다.
+
+```bash
+cd /c/Study/2026.1/Apollo
+rm -rf build
+cmake -B build -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
+ninja -C build
+cpack -G NSIS --config ./build/CPackConfig.cmake
+```
+
+생성된 installer 위치는 다음과 같다.
+
+```bash
+build/cpack_artifacts/Apollo.exe
+```
+
+`Apollo.exe`를 설치하면 릴리즈와 같은 폴더 구조와 Windows 통합 설정이 적용된다. `build` 폴더의 `sunshine.exe`를
+직접 실행하는 것은 개발용 실행에 가깝다. 이 경우 console window가 뜰 수 있고, 그 창을 닫으면 Sunshine도 같이
+종료된다. Installer는 `ApolloService`를 설정하고, Start Menu shortcut은 `sunshine.exe --shortcut`으로 실행되어
+service가 console window 없이 Sunshine을 실행할 수 있게 한다.
+
+CMake가 `failed recompaction: Permission denied` 오류로 실패하면, 이전에 중단된 build의 `ninja`, `c++`, `cc1plus`
+프로세스가 아직 살아 있어서 `build.ninja`를 잡고 있을 수 있다. 다른 MSYS2 terminal을 닫거나 해당 프로세스를
+종료한 뒤 `cmake` 명령을 다시 실행한다.
+
+CMake가 MSYS2 package의 Boost를 사용하지 않고 Boost 다운로드로 fallback한다면, `mingw-w64-ucrt-x86_64-boost`가
+설치되어 있는지 확인한다. 또한 `cmake/dependencies/Boost_Sunshine.cmake`에서 허용하는 Boost version 조건이 현재
+MSYS2에 설치된 Boost package보다 너무 좁게 고정되어 있지 않은지도 확인한다.
+
 ### Clone
 Ensure [git](https://git-scm.com) is installed on your system, then clone the repository using the following command:
 
