@@ -250,6 +250,32 @@ namespace confighttp {
     response->write(code, tree.dump(), headers);
   }
 
+  bool read_uint_field(const nlohmann::json &input_tree, const char *key, uint32_t min, uint32_t max, uint32_t &output, std::string &error) {
+    if (!input_tree.contains(key) || (!input_tree[key].is_number_integer() && !input_tree[key].is_number_unsigned())) {
+      error = "Missing or invalid "s + key + " in request body";
+      return false;
+    }
+
+    uint64_t value;
+    if (input_tree[key].is_number_integer()) {
+      const auto signed_value {input_tree[key].get<int64_t>()};
+      if (signed_value < 0) {
+        error = std::string(key) + " must be between " + std::to_string(min) + " and " + std::to_string(max);
+        return false;
+      }
+      value = static_cast<uint64_t>(signed_value);
+    } else {
+      value = input_tree[key].get<uint64_t>();
+    }
+
+    if (value < min || value > max) {
+      error = std::string(key) + " must be between " + std::to_string(min) + " and " + std::to_string(max);
+      return false;
+    }
+
+    output = static_cast<uint32_t>(value);
+    return true;
+  }
 
   /**
    * @brief Validate the request content type and send bad request when mismatch.
@@ -467,6 +493,26 @@ namespace confighttp {
     print_req(request);
 
     std::string content = file_handler::read_file(WEB_DIR "troubleshooting.html");
+    SimpleWeb::CaseInsensitiveMultimap headers;
+    headers.emplace("Content-Type", "text/html; charset=utf-8");
+    headers.emplace("X-Frame-Options", "DENY");
+    headers.emplace("Content-Security-Policy", "frame-ancestors 'none';");
+    response->write(content, headers);
+  }
+
+  /**
+   * @brief Get the manual virtual display mode test page.
+   * @param response The HTTP response object.
+   * @param request The HTTP request object.
+   */
+  void getVirtualDisplayTestPage(resp_https_t response, req_https_t request) {
+    if (!authenticate(response, request, true)) {
+      return;
+    }
+
+    print_req(request);
+
+    std::string content = file_handler::read_file(WEB_DIR "virtual_display_test.html");
     SimpleWeb::CaseInsensitiveMultimap headers;
     headers.emplace("Content-Type", "text/html; charset=utf-8");
     headers.emplace("X-Frame-Options", "DENY");
@@ -1318,6 +1364,72 @@ namespace confighttp {
   }
 
   /**
+   * @brief Resize the currently active virtual display.
+   * @param response The HTTP response object.
+   * @param request The HTTP request object.
+   *
+   * The body for the POST request should be JSON serialized in the following format:
+   * @code{.json}
+   * {
+   *   "width": 2560,
+   *   "height": 1440,
+   *   "fps": 120
+   * }
+   * @endcode
+   *
+   * @api_examples{/api/virtual-display/resolution| POST| {"width":2560,"height":1440,"fps":120}}
+   */
+  void resizeVirtualDisplay(resp_https_t response, req_https_t request) {
+    if (!validateContentType(response, request, "application/json") || !authenticate(response, request)) {
+      return;
+    }
+
+    print_req(request);
+
+    try {
+      std::stringstream ss;
+      ss << request->content.rdbuf();
+      nlohmann::json input_tree = nlohmann::json::parse(ss.str());
+
+      uint32_t width;
+      uint32_t height;
+      uint32_t fps;
+      std::string validation_error;
+
+      if (!read_uint_field(input_tree, "width", 320, 16384, width, validation_error)) {
+        bad_request(response, request, validation_error);
+        return;
+      }
+
+      if (!read_uint_field(input_tree, "height", 240, 16384, height, validation_error)) {
+        bad_request(response, request, validation_error);
+        return;
+      }
+
+      if (!read_uint_field(input_tree, "fps", 1, 1000, fps, validation_error)) {
+        bad_request(response, request, validation_error);
+        return;
+      }
+
+      const auto result {proc::proc.resize_virtual_display(width, height, fps)};
+      nlohmann::json output_tree;
+      output_tree["status"] = result.status;
+      output_tree["width"] = width;
+      output_tree["height"] = height;
+      output_tree["fps"] = fps;
+      if (!result.status) {
+        output_tree["error"] = result.error;
+        output_tree["error_code"] = result.error_code;
+      }
+
+      send_response(response, output_tree);
+    } catch (std::exception &e) {
+      BOOST_LOG(warning) << "ResizeVirtualDisplay: "sv << e.what();
+      bad_request(response, request, e.what());
+    }
+  }
+
+  /**
    * @brief Restart Apollo.
    * @param response The HTTP response object.
    * @param request The HTTP request object.
@@ -1530,6 +1642,7 @@ namespace confighttp {
     server.resource["^/welcome/?$"]["GET"] = getWelcomePage;
     server.resource["^/login/?$"]["GET"] = getLoginPage;
     server.resource["^/troubleshooting/?$"]["GET"] = getTroubleshootingPage;
+    server.resource["^/virtual-display-test/?$"]["GET"] = getVirtualDisplayTestPage;
     server.resource["^/api/login"]["POST"] = login;
     server.resource["^/api/pin$"]["POST"] = savePin;
     server.resource["^/api/otp$"]["POST"] = getOTP;
@@ -1546,6 +1659,7 @@ namespace confighttp {
     server.resource["^/api/restart$"]["POST"] = restart;
     server.resource["^/api/quit$"]["POST"] = quit;
     server.resource["^/api/reset-display-device-persistence$"]["POST"] = resetDisplayDevicePersistence;
+    server.resource["^/api/virtual-display/resolution$"]["POST"] = resizeVirtualDisplay;
     server.resource["^/api/password$"]["POST"] = savePassword;
     server.resource["^/api/clients/unpair-all$"]["POST"] = unpairAll;
     server.resource["^/api/clients/list$"]["GET"] = getClients;

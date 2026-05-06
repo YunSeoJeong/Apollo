@@ -48,6 +48,12 @@ namespace proc {
 
   typedef config::prep_cmd_t cmd_t;
 
+  struct virtual_display_resize_result_t {
+    bool status;
+    std::string error;
+    long error_code;
+  };
+
   /**
    * pre_cmds -- guaranteed to be executed unless any of the commands fail.
    * detached -- commands detached from Sunshine
@@ -136,6 +142,7 @@ namespace proc {
     std::string get_last_run_app_name();
     std::string get_running_app_uuid();
     boost::process::v1::environment get_env();
+    virtual_display_resize_result_t resize_virtual_display(uint32_t width, uint32_t height, uint32_t fps);
     void resume();
     void pause();
     void terminate(bool immediate = false, bool needs_refresh = true);

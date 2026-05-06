@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="auto">
+
+<head>
+  <%- header %>
+</head>
+
+<body id="app" v-cloak>
+  <Navbar></Navbar>
+  <main class="container py-4">
+    <h1 class="mb-4">Virtual Display Mode Test</h1>
+
+    <div class="card p-2 my-4">
+      <div class="card-body">
+        <div class="row g-3 align-items-end">
+          <div class="col-12 col-md-4">
+            <label for="vd-width" class="form-label">Width</label>
+            <input id="vd-width" type="number" min="320" max="16384" class="form-control" v-model.number="width">
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="vd-height" class="form-label">Height</label>
+            <input id="vd-height" type="number" min="240" max="16384" class="form-control" v-model.number="height">
+          </div>
+          <div class="col-12 col-md-4">
+            <label for="vd-fps" class="form-label">FPS</label>
+            <input id="vd-fps" type="number" min="1" max="1000" class="form-control" v-model.number="fps">
+          </div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <button class="btn btn-outline-secondary" @click="setMode(1920, 1080, 60)">1080p 60</button>
+          <button class="btn btn-outline-secondary" @click="setMode(2560, 1440, 60)">1440p 60</button>
+          <button class="btn btn-outline-secondary" @click="setMode(2560, 1440, 120)">1440p 120</button>
+          <button class="btn btn-outline-secondary" @click="setMode(3840, 2160, 60)">4K 60</button>
+          <button class="btn btn-primary ms-md-auto" :disabled="busy" @click="applyMode">
+            <span v-if="busy" class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            Apply
+          </button>
+        </div>
+
+        <div class="alert mt-4" :class="statusClass" v-if="message">
+          {{ message }}
+        </div>
+
+        <pre class="bg-body-tertiary border rounded p-3 mt-3 mb-0" v-if="responseText">{{ responseText }}</pre>
+      </div>
+    </div>
+
+  </main>
+
+  <script type="module">
+    import { createApp } from 'vue';
+    import { initApp } from './init';
+    import Navbar from './Navbar.vue';
+
+    const app = createApp({
+      components: {
+        Navbar,
+      },
+      data() {
+        return {
+          width: 2560,
+          height: 1440,
+          fps: 60,
+          busy: false,
+          ok: null,
+          message: '',
+          responseText: '',
+        };
+      },
+      computed: {
+        statusClass() {
+          if (this.ok === true) {
+            return 'alert-success';
+          }
+          if (this.ok === false) {
+            return 'alert-danger';
+          }
+          return 'alert-secondary';
+        },
+      },
+      methods: {
+        setMode(width, height, fps) {
+          this.width = width;
+          this.height = height;
+          this.fps = fps;
+        },
+        async applyMode() {
+          this.busy = true;
+          this.ok = null;
+          this.message = '';
+          this.responseText = '';
+
+          try {
+            const response = await fetch('./api/virtual-display/resolution', {
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                width: this.width,
+                height: this.height,
+                fps: this.fps,
+              }),
+            });
+
+            const body = await response.json();
+            this.ok = response.ok && body.status === true;
+            this.message = this.ok ? 'Applied.' : (body.error || 'Failed.');
+            this.responseText = JSON.stringify(body, null, 2);
+          } catch (err) {
+            this.ok = false;
+            this.message = err.message || 'Request failed.';
+          } finally {
+            this.busy = false;
+          }
+        },
+      },
+    });
+
+    initApp(app);
+  </script>
+</body>
+
+</html>

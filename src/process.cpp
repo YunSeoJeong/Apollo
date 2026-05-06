@@ -601,6 +601,43 @@ namespace proc {
     return 0;
   }
 
+  virtual_display_resize_result_t proc_t::resize_virtual_display(uint32_t width, uint32_t height, uint32_t fps) {
+#ifdef _WIN32
+    if (vDisplayDriverStatus != VDISPLAY::DRIVER_STATUS::OK) {
+      return {false, "Virtual display driver is not ready", 0};
+    }
+
+    if (!running()) {
+      return {false, "No running app or stream session", 0};
+    }
+
+    if (!virtual_display || !_launch_session || !_launch_session->virtual_display) {
+      return {false, "No active virtual display", 0};
+    }
+
+    if (display_name.empty()) {
+      return {false, "Virtual display name is not available yet", 0};
+    }
+
+    int target_fps = static_cast<int>(fps);
+    if (target_fps < 1000) {
+      target_fps *= 1000;
+    }
+
+    const auto display_name_w {platf::from_utf8(display_name)};
+    const auto result {VDISPLAY::changeDisplaySettings(display_name_w.c_str(), static_cast<int>(width), static_cast<int>(height), target_fps)};
+    if (result != ERROR_SUCCESS) {
+      BOOST_LOG(warning) << "Failed to resize virtual display ["sv << display_name << "] to ["sv << width << 'x' << height << '@' << fps << "]. Error: "sv << result;
+      return {false, "Failed to apply virtual display mode", result};
+    }
+
+    BOOST_LOG(info) << "Virtual display ["sv << display_name << "] resized to ["sv << width << 'x' << height << '@' << fps << ']';
+    return {true, "", 0};
+#else
+    return {false, "Virtual display resize is only supported on Windows", 0};
+#endif
+  }
+
   void proc_t::resume() {
     BOOST_LOG(info) << "Session resuming for app [" << _app_name << "].";
 

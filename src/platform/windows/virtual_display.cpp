@@ -244,7 +244,22 @@ LONG changeDisplaySettings2(const wchar_t* deviceName, int width, int height, in
 						| SDC_SAVE_TO_DATABASE
 					);
 					if (status != ERROR_SUCCESS) {
-						wprintf(L"[SUDOVDA] Failed to apply display settings.\n");
+						wprintf(L"[SUDOVDA] Failed to apply display settings, retrying with SDC_ALLOW_CHANGES. Error: %ld\n", status);
+						status = SetDisplayConfig(
+							pathCount,
+							pathArray.data(),
+							modeCount,
+							modeArray.data(),
+							SDC_APPLY
+							| SDC_USE_SUPPLIED_DISPLAY_CONFIG
+							| SDC_SAVE_TO_DATABASE
+							| SDC_ALLOW_CHANGES
+						);
+						if (status != ERROR_SUCCESS) {
+							wprintf(L"[SUDOVDA] Failed to apply display settings. Error: %ld\n", status);
+						} else {
+							wprintf(L"[SUDOVDA] Display settings updated successfully with SDC_ALLOW_CHANGES.\n");
+						}
 					} else {
 						wprintf(L"[SUDOVDA] Display settings updated successfully.\n");
 					}
@@ -295,7 +310,16 @@ LONG changeDisplaySettings(const wchar_t* deviceName, int width, int height, int
 			devMode.dmDisplayFrequency = altRefreshRate;
 			res = ChangeDisplaySettingsExW(deviceName, &devMode, NULL, CDS_UPDATEREGISTRY, NULL);
 			if (res != ERROR_SUCCESS) {
-				wprintf(L"[SUDOVDA] Failed to apply alt baseline display mode.\n");
+				wprintf(L"[SUDOVDA] Failed to apply alt baseline display mode, retrying unsafe modes.\n");
+				devMode.dmDisplayFrequency = targetRefreshRate;
+				res = ChangeDisplaySettingsExW(deviceName, &devMode, NULL, CDS_UPDATEREGISTRY | CDS_ENABLE_UNSAFE_MODES, NULL);
+				if (res != ERROR_SUCCESS) {
+					devMode.dmDisplayFrequency = altRefreshRate;
+					res = ChangeDisplaySettingsExW(deviceName, &devMode, NULL, CDS_UPDATEREGISTRY | CDS_ENABLE_UNSAFE_MODES, NULL);
+				}
+				if (res != ERROR_SUCCESS) {
+					wprintf(L"[SUDOVDA] Failed to apply unsafe baseline display mode. Error: %ld\n", res);
+				}
 			}
 		}
 

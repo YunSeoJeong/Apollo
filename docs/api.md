@@ -54,6 +54,9 @@ basic authentication with the admin username and password.
 ## POST /api/reset-display-device-persistence
 @copydoc confighttp::resetDisplayDevicePersistence()
 
+## POST /api/virtual-display/resolution
+@copydoc confighttp::resizeVirtualDisplay()
+
 ## POST /api/restart
 @copydoc confighttp::restart()
 
