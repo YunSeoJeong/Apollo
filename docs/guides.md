@@ -5,6 +5,11 @@
 Feel free to contribute your own tips and trips by making a PR to
 [LizardByte.github.io](https://github.com/LizardByte/LizardByte.github.io).}
 
+## Apollo Guides
+
+- [Server Commands](server_commands.md)
+- [서버 명령](server_commands_ko.md)
+
 <div class="section_buttons">
 
 | Previous                                |                                        Next |

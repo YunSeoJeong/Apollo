@@ -246,14 +246,16 @@ namespace config {
   };
 
   struct server_cmd_t {
-    server_cmd_t(std::string &&cmd_name, std::string &&cmd_val, bool &&elevated):
+    server_cmd_t(std::string &&cmd_name, std::string &&cmd_val, bool &&elevated, bool &&allow_client_args):
         cmd_name(std::move(cmd_name)),
         cmd_val(std::move(cmd_val)),
-        elevated(std::move(elevated)) {
+        elevated(std::move(elevated)),
+        allow_client_args(std::move(allow_client_args)) {
     }
     std::string cmd_name;
     std::string cmd_val;
     bool elevated;
+    bool allow_client_args;
   };
 
   struct sunshine_t {

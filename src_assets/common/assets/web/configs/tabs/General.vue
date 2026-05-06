@@ -27,7 +27,8 @@ const prepCmdTemplate = {
 
 const serverCmdTemplate = {
   name: "",
-  cmd: ""
+  cmd: "",
+  "allow-client-args": false
 }
 
 function addCmd(cmdArr, template, idx) {
@@ -122,6 +123,7 @@ onMounted(() => {
           <th scope="col" v-if="platform === 'windows'">
             <i class="fas fa-shield-alt"></i> {{ $t('_common.run_as') }}
           </th>
+          <th scope="col"><i class="fas fa-keyboard"></i> {{ $t('_common.client_args') }}</th>
           <th scope="col"></th>
         </tr>
         </thead>
@@ -187,6 +189,12 @@ onMounted(() => {
             <div class="form-check">
               <input type="checkbox" class="form-check-input" :id="'server-cmd-admin-' + i" v-model="c.elevated"/>
               <label :for="'server-cmd-admin-' + i" class="form-check-label">{{ $t('_common.elevated') }}</label>
+            </div>
+          </td>
+          <td>
+            <div class="form-check">
+              <input type="checkbox" class="form-check-input" :id="'server-cmd-client-args-' + i" v-model="c['allow-client-args']"/>
+              <label :for="'server-cmd-client-args-' + i" class="form-check-label">{{ $t('_common.enabled') }}</label>
             </div>
           </td>
           <td class="text-end">

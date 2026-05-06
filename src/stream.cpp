@@ -85,6 +85,7 @@ using asio::ip::udp;
 using namespace std::literals;
 
 namespace stream {
+  constexpr std::size_t MAX_SERVER_CMD_ARGS_SIZE = 4096;
 
   enum class socket_e : int {
     video,  ///< Video
@@ -1009,17 +1010,51 @@ namespace stream {
         return;
       }
 
-      uint8_t cmdIndex = *(uint8_t*)payload.data();
+      if (payload.empty()) {
+        BOOST_LOG(warning) << "Ignoring empty server command payload from [" << session->device_name << "]";
+        return;
+      }
+
+      uint8_t cmdIndex = static_cast<uint8_t>(payload.front());
 
       if (cmdIndex < config::sunshine.server_cmds.size()) {
         const auto& cmd = config::sunshine.server_cmds[cmdIndex];
+        std::string client_args;
+
+        if (payload.size() > 1) {
+          if (!cmd.allow_client_args) {
+            BOOST_LOG(warning) << "Ignoring client arguments for server command [" << cmd.cmd_name << "] from [" << session->device_name << "]";
+            return;
+          }
+
+          if (payload.size() - 1 > MAX_SERVER_CMD_ARGS_SIZE) {
+            BOOST_LOG(warning) << "Ignoring oversized client arguments for server command [" << cmd.cmd_name << "] from [" << session->device_name << "]";
+            return;
+          }
+
+          client_args.assign(payload.data() + 1, payload.size() - 1);
+          if (!client_args.empty() && client_args.back() == '\0') {
+            client_args.pop_back();
+          }
+          if (client_args.find('\0') != std::string::npos) {
+            BOOST_LOG(warning) << "Ignoring client arguments containing embedded NUL for server command [" << cmd.cmd_name << "] from [" << session->device_name << "]";
+            return;
+          }
+        }
+
+        std::string command = cmd.cmd_val;
+        if (!client_args.empty()) {
+          command += ' ';
+          command += client_args;
+        }
+
         BOOST_LOG(info) << "Executing server command: " << cmd.cmd_name;
 
-        auto exec_thread = std::thread([&cmd]{
+        auto exec_thread = std::thread([command = std::move(command), elevated = cmd.elevated]{
           std::error_code ec;
           auto env = proc::proc.get_env();
-          boost::filesystem::path working_dir = proc::find_working_directory(cmd.cmd_val, env);
-          auto child = platf::run_command(cmd.elevated, true, cmd.cmd_val, working_dir, env, nullptr, ec, nullptr);
+          boost::filesystem::path working_dir = proc::find_working_directory(command, env);
+          auto child = platf::run_command(elevated, true, command, working_dir, env, nullptr, ec, nullptr);
 
           if (ec) {
             BOOST_LOG(error) << "Failed to execute server command: " << ec.message();

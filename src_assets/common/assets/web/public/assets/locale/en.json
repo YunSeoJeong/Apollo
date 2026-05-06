@@ -5,6 +5,7 @@
     "autodetect": "Autodetect (recommended)",
     "beta": "(beta)",
     "cancel": "Cancel",
+    "client_args": "Client Args",
     "cmd_name": "Command Name",
     "cmd_val": "Command Value",
     "default": "Default",

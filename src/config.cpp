@@ -993,8 +993,9 @@ namespace config {
       auto cmd_name = prep_cmd.get_optional<std::string>("name"s);
       auto cmd_val = prep_cmd.get_optional<std::string>("cmd"s);
       auto elevated = prep_cmd.get_optional<bool>("elevated"s);
+      auto allow_client_args = prep_cmd.get_optional<bool>("allow-client-args"s);
 
-      input.emplace_back(cmd_name.value_or(""), cmd_val.value_or(""), elevated.value_or(false));
+      input.emplace_back(cmd_name.value_or(""), cmd_val.value_or(""), elevated.value_or(false), allow_client_args.value_or(false));
     }
   }
 
