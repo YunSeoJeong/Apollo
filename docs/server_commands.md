@@ -15,7 +15,7 @@ Each command has:
 | Command Name | The label advertised to clients. |
 | Command Value | The host command to execute. |
 | Run as Admin | Windows-only option to run the command elevated. |
-| Client Args | Allows the client to append an argument string to this command. |
+| Client Args | Allows the client to provide an argument string for this command. |
 
 The equivalent config file entry is:
 
@@ -51,7 +51,7 @@ To run `open-profile` with arguments:
 "open-profile" + [0x00] + "--profile living-room --fullscreen"
 ```
 
-When client arguments are present and allowed, Apollo executes:
+When client arguments are present and allowed, Apollo appends them to the host command by default:
 
 ```text
 <host configured command> <client argument string>
@@ -75,6 +75,27 @@ Apollo runs:
 C:\Tools\launcher.exe --profile living-room
 ```
 
+To insert client arguments somewhere other than the end, include `{client_args}` in the host command.
+Apollo replaces every `{client_args}` placeholder with the client argument string.
+
+For example, with this host command:
+
+```text
+C:\Tools\launcher.exe --profile {client_args} --fullscreen
+```
+
+and this client payload:
+
+```text
+"open-profile" + [0x00] + "living-room"
+```
+
+Apollo runs:
+
+```text
+C:\Tools\launcher.exe --profile living-room --fullscreen
+```
+
 ## Safety Rules
 
 The client must have the `server_cmd` permission.
@@ -89,8 +110,10 @@ Command IDs are limited to 128 bytes.
 
 Client argument strings are limited to 4096 bytes. Payloads with embedded NUL bytes are ignored.
 
-Client arguments are appended as a raw command-line string. The client is responsible for sending
-arguments with the quoting expected by the host platform and target command.
+Client arguments are used as a raw command-line string. If the host command contains
+`{client_args}`, Apollo substitutes the raw string there. Otherwise, Apollo appends the raw string
+to the end of the command. The client is responsible for sending arguments with the quoting expected
+by the host platform and target command.
 
 ## Discovery
 

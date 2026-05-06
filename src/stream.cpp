@@ -88,6 +88,24 @@ using namespace std::literals;
 namespace stream {
   constexpr std::size_t MAX_SERVER_CMD_ID_SIZE = 128;
   constexpr std::size_t MAX_SERVER_CMD_ARGS_SIZE = 4096;
+  constexpr char SERVER_CMD_CLIENT_ARGS_PLACEHOLDER[] = "{client_args}";
+
+  std::string build_server_command(std::string command, const std::string &client_args) {
+    bool replaced = false;
+    std::size_t pos = 0;
+    while ((pos = command.find(SERVER_CMD_CLIENT_ARGS_PLACEHOLDER, pos)) != std::string::npos) {
+      command.replace(pos, sizeof(SERVER_CMD_CLIENT_ARGS_PLACEHOLDER) - 1, client_args);
+      pos += client_args.size();
+      replaced = true;
+    }
+
+    if (!replaced && !client_args.empty()) {
+      command += ' ';
+      command += client_args;
+    }
+
+    return command;
+  }
 
   enum class socket_e : int {
     video,  ///< Video
@@ -1055,11 +1073,7 @@ namespace stream {
         return;
       }
 
-      std::string command = cmd.cmd_val;
-      if (!client_args.empty()) {
-        command += ' ';
-        command += client_args;
-      }
+      std::string command = build_server_command(cmd.cmd_val, client_args);
 
       BOOST_LOG(info) << "Executing server command: " << cmd.cmd_name;
 
