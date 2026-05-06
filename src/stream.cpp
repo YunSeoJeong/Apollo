@@ -4,6 +4,7 @@
  */
 
 // standard includes
+#include <algorithm>
 #include <fstream>
 #include <future>
 #include <queue>
@@ -85,6 +86,7 @@ using asio::ip::udp;
 using namespace std::literals;
 
 namespace stream {
+  constexpr std::size_t MAX_SERVER_CMD_ID_SIZE = 128;
   constexpr std::size_t MAX_SERVER_CMD_ARGS_SIZE = 4096;
 
   enum class socket_e : int {
@@ -1015,58 +1017,66 @@ namespace stream {
         return;
       }
 
-      uint8_t cmdIndex = static_cast<uint8_t>(payload.front());
-
-      if (cmdIndex < config::sunshine.server_cmds.size()) {
-        const auto& cmd = config::sunshine.server_cmds[cmdIndex];
-        std::string client_args;
-
-        if (payload.size() > 1) {
-          if (!cmd.allow_client_args) {
-            BOOST_LOG(warning) << "Ignoring client arguments for server command [" << cmd.cmd_name << "] from [" << session->device_name << "]";
-            return;
-          }
-
-          if (payload.size() - 1 > MAX_SERVER_CMD_ARGS_SIZE) {
-            BOOST_LOG(warning) << "Ignoring oversized client arguments for server command [" << cmd.cmd_name << "] from [" << session->device_name << "]";
-            return;
-          }
-
-          client_args.assign(payload.data() + 1, payload.size() - 1);
-          if (!client_args.empty() && client_args.back() == '\0') {
-            client_args.pop_back();
-          }
-          if (client_args.find('\0') != std::string::npos) {
-            BOOST_LOG(warning) << "Ignoring client arguments containing embedded NUL for server command [" << cmd.cmd_name << "] from [" << session->device_name << "]";
-            return;
-          }
-        }
-
-        std::string command = cmd.cmd_val;
-        if (!client_args.empty()) {
-          command += ' ';
-          command += client_args;
-        }
-
-        BOOST_LOG(info) << "Executing server command: " << cmd.cmd_name;
-
-        auto exec_thread = std::thread([command = std::move(command), elevated = cmd.elevated]{
-          std::error_code ec;
-          auto env = proc::proc.get_env();
-          boost::filesystem::path working_dir = proc::find_working_directory(command, env);
-          auto child = platf::run_command(elevated, true, command, working_dir, env, nullptr, ec, nullptr);
-
-          if (ec) {
-            BOOST_LOG(error) << "Failed to execute server command: " << ec.message();
-          } else {
-            child.detach();
-          }
-        });
-
-        exec_thread.detach();
-      } else {
-        BOOST_LOG(error) << "Invalid server command index: " << (int)cmdIndex;
+      auto separator = payload.find('\0');
+      auto command_id_view = separator == std::string_view::npos ? payload : payload.substr(0, separator);
+      if (command_id_view.empty() || command_id_view.size() > MAX_SERVER_CMD_ID_SIZE) {
+        BOOST_LOG(warning) << "Ignoring server command payload with invalid command id from [" << session->device_name << "]";
+        return;
       }
+
+      std::string client_args;
+      if (separator != std::string_view::npos && separator + 1 < payload.size()) {
+        if (payload.size() - separator - 1 > MAX_SERVER_CMD_ARGS_SIZE) {
+          BOOST_LOG(warning) << "Ignoring oversized client arguments for server command id [" << command_id_view << "] from [" << session->device_name << "]";
+          return;
+        }
+
+        client_args.assign(payload.data() + separator + 1, payload.size() - separator - 1);
+        if (!client_args.empty() && client_args.back() == '\0') {
+          client_args.pop_back();
+        }
+        if (client_args.find('\0') != std::string::npos) {
+          BOOST_LOG(warning) << "Ignoring client arguments containing embedded NUL for server command id [" << command_id_view << "] from [" << session->device_name << "]";
+          return;
+        }
+      }
+
+      auto cmd_it = std::find_if(config::sunshine.server_cmds.begin(), config::sunshine.server_cmds.end(), [command_id_view](const auto &cmd) {
+        return cmd.cmd_id == command_id_view;
+      });
+      if (cmd_it == config::sunshine.server_cmds.end()) {
+        BOOST_LOG(warning) << "Ignoring unknown server command id [" << command_id_view << "] from [" << session->device_name << "]";
+        return;
+      }
+
+      const auto& cmd = *cmd_it;
+      if (!client_args.empty() && !cmd.allow_client_args) {
+        BOOST_LOG(warning) << "Ignoring client arguments for server command [" << cmd.cmd_name << "] from [" << session->device_name << "]";
+        return;
+      }
+
+      std::string command = cmd.cmd_val;
+      if (!client_args.empty()) {
+        command += ' ';
+        command += client_args;
+      }
+
+      BOOST_LOG(info) << "Executing server command: " << cmd.cmd_name;
+
+      auto exec_thread = std::thread([command = std::move(command), elevated = cmd.elevated]{
+        std::error_code ec;
+        auto env = proc::proc.get_env();
+        boost::filesystem::path working_dir = proc::find_working_directory(command, env);
+        auto child = platf::run_command(elevated, true, command, working_dir, env, nullptr, ec, nullptr);
+
+        if (ec) {
+          BOOST_LOG(error) << "Failed to execute server command: " << ec.message();
+        } else {
+          child.detach();
+        }
+      });
+
+      exec_thread.detach();
     });
 
     server->map(packetTypes[IDX_SET_CLIPBOARD], [server](session_t *session, const std::string_view &payload) {

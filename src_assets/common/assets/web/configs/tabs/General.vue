@@ -26,6 +26,7 @@ const prepCmdTemplate = {
 }
 
 const serverCmdTemplate = {
+  id: "",
   name: "",
   cmd: "",
   "allow-client-args": false
@@ -169,6 +170,7 @@ onMounted(() => {
       <table class="table" v-if="serverCmd.length > 0">
         <thead>
         <tr>
+          <th scope="col"><i class="fas fa-fingerprint"></i> {{ $t('_common.cmd_id') }}</th>
           <th scope="col"><i class="fas fa-tag"></i> {{ $t('_common.cmd_name') }}</th>
           <th scope="col"><i class="fas fa-terminal"></i> {{ $t('_common.cmd_val') }}</th>
           <th scope="col" v-if="platform === 'windows'">
@@ -179,6 +181,9 @@ onMounted(() => {
         </thead>
         <tbody>
         <tr v-for="(c, i) in serverCmd">
+          <td>
+            <input type="text" class="form-control monospace" v-model="c.id" />
+          </td>
           <td>
             <input type="text" class="form-control" v-model="c.name" />
           </td>

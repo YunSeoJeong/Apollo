@@ -919,6 +919,14 @@ namespace nvhttp {
         if (config::sunshine.server_cmds.size() > 0) {
           // Broadcast server_cmds
           for (const auto& cmd : config::sunshine.server_cmds) {
+            if (cmd.cmd_id.empty()) {
+              continue;
+            }
+
+            pt::ptree id_node;
+            id_node.put_value(cmd.cmd_id);
+            root_node.push_back(std::make_pair("ServerCommandId", id_node));
+
             pt::ptree cmd_node;
             cmd_node.put_value(cmd.cmd_name);
             root_node.push_back(std::make_pair("ServerCommand", cmd_node));

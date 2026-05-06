@@ -990,12 +990,13 @@ namespace config {
     boost::property_tree::read_json(jsonStream, jsonTree);
 
     for (auto &[_, prep_cmd] : jsonTree.get_child("server_cmd"s)) {
+      auto cmd_id = prep_cmd.get_optional<std::string>("id"s);
       auto cmd_name = prep_cmd.get_optional<std::string>("name"s);
       auto cmd_val = prep_cmd.get_optional<std::string>("cmd"s);
       auto elevated = prep_cmd.get_optional<bool>("elevated"s);
       auto allow_client_args = prep_cmd.get_optional<bool>("allow-client-args"s);
 
-      input.emplace_back(cmd_name.value_or(""), cmd_val.value_or(""), elevated.value_or(false), allow_client_args.value_or(false));
+      input.emplace_back(cmd_id.value_or(""), cmd_name.value_or(""), cmd_val.value_or(""), elevated.value_or(false), allow_client_args.value_or(false));
     }
   }
 
@@ -1452,7 +1453,7 @@ namespace config {
       if (!fs::exists(sunshine.config_file)) {
         auto cfg_file = std::ofstream {sunshine.config_file};
       #ifdef _WIN32
-        cfg_file << "server_cmd = [{\"name\":\"Bubbles\",\"cmd\":\"bubbles.scr\",\"elevated\":false}]\n";
+        cfg_file << "server_cmd = [{\"id\":\"bubbles\",\"name\":\"Bubbles\",\"cmd\":\"bubbles.scr\",\"elevated\":false}]\n";
       #endif
       }
 

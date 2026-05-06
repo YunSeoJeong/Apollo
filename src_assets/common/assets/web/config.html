@@ -426,7 +426,7 @@
         config.global_prep_cmd = this.global_prep_cmd.filter(cmd => (cmd.do && cmd.do.trim()) || (cmd.undo && cmd.undo.trim()));
         config.global_state_cmd = this.global_state_cmd.filter(cmd => (cmd.do && cmd.do.trim()) || (cmd.undo && cmd.undo.trim()));
         config.dd_mode_remapping = config.dd_mode_remapping;
-        config.server_cmd = this.server_cmd.filter(cmd => (cmd.name && cmd.cmd && cmd.name.trim() && cmd.cmd.trim()));
+        config.server_cmd = this.server_cmd.filter(cmd => (cmd.id && cmd.name && cmd.cmd && cmd.id.trim() && cmd.name.trim() && cmd.cmd.trim()));
         return config;
       },
       save() {
