@@ -5,6 +5,7 @@
 #include <initguid.h>
 #include <devguid.h>
 #include <combaseapi.h>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -160,20 +161,21 @@ namespace {
 
 	std::string sanitizeXmlText(std::string value) {
 		std::erase(value, '\r');
+		std::replace(value.begin(), value.end(), ';', '\n');
 		return value;
 	}
 
 	void writeVddSettings(uint32_t width, uint32_t height, uint32_t fps) {
-		std::set<std::tuple<uint32_t, uint32_t, uint32_t>> modes;
-		const auto add_mode = [&modes](uint32_t w, uint32_t h, uint32_t hz) {
-			if (w >= 320 && h >= 240 && hz >= 1 && hz <= 1000) {
+		std::set<std::tuple<uint32_t, uint32_t, double>> modes;
+		const auto add_mode = [&modes](uint32_t w, uint32_t h, double hz) {
+			if (w >= 320 && h >= 240 && std::isfinite(hz) && hz >= 1.0 && hz <= 1000.0) {
 				modes.emplace(w, h, hz);
 			}
 		};
 
 		add_mode(width, height, fps);
 
-		std::regex modePattern(R"(^\s*(\d+)x(\d+)@(\d+)\s*$)");
+		std::regex modePattern(R"(^\s*(\d+)\s*x\s*(\d+)\s*@\s*(\d+(?:\.\d+)?)\s*$)", std::regex::icase);
 		std::stringstream modeTable(sanitizeXmlText(config::video.vdd_mode_table));
 		std::string line;
 		while (std::getline(modeTable, line)) {
@@ -182,7 +184,7 @@ namespace {
 				continue;
 			}
 
-			add_mode(std::stoul(match[1].str()), std::stoul(match[2].str()), std::stoul(match[3].str()));
+			add_mode(std::stoul(match[1].str()), std::stoul(match[2].str()), std::stod(match[3].str()));
 		}
 
 		std::filesystem::create_directories(L"C:\\VirtualDisplayDriver");

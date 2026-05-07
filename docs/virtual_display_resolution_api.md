@@ -11,6 +11,27 @@ Content-Type: application/json
 
 The endpoint uses the same HTTPS host, port, and authentication session as the Web UI API.
 
+Non-Web-UI clients must first authenticate with `POST /api/login` using the Web UI username and password,
+then reuse the returned `auth` cookie when calling this endpoint. Basic authentication is not supported by
+this endpoint in the current implementation.
+
+Example login request:
+
+```http
+POST /api/login
+Content-Type: application/json
+```
+
+```json
+{
+  "username": "admin",
+  "password": "password"
+}
+```
+
+On success, the server returns a `Set-Cookie` header containing the `auth` cookie. Include that cookie in
+subsequent API requests.
+
 ## Request Body
 
 ```json

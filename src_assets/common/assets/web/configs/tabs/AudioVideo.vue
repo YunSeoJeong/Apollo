@@ -39,7 +39,7 @@ const blankVddMode = () => ({
 
 const parseVddModeTable = (value) => {
   const rows = `${value ?? ''}`
-    .split(/\r?\n/)
+    .split(/[\r\n;]+/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
@@ -63,10 +63,17 @@ const parseVddModeTable = (value) => {
   return rows.length ? rows : [blankVddMode()]
 }
 
+const normalizeVddModePart = (value) => `${value ?? ''}`.trim()
+
 const serializeVddModeTable = (rows) => rows
-  .filter((row) => row.width || row.height || row.refresh)
+  .map((row) => ({
+    width: normalizeVddModePart(row.width),
+    height: normalizeVddModePart(row.height),
+    refresh: normalizeVddModePart(row.refresh)
+  }))
+  .filter((row) => row.width && row.height && row.refresh)
   .map((row) => `${row.width}x${row.height}@${row.refresh}`)
-  .join('\n')
+  .join(';')
 
 const vddModeRows = ref(parseVddModeTable(config.value.vdd_mode_table))
 
