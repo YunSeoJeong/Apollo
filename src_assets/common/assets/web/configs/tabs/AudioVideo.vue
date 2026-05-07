@@ -1,5 +1,5 @@
 <script setup>
-import {ref, computed, inject} from 'vue'
+import {ref, computed, inject, watch} from 'vue'
 import {$tp} from '../../platform-i18n'
 import PlatformLayout from '../../PlatformLayout.vue'
 import AdapterNameSelector from './audiovideo/AdapterNameSelector.vue'
@@ -30,6 +30,83 @@ const currentDriverStatus = computed(() => sudovdaStatus[props.vdisplay])
 
 const config = ref(props.config ?? {})
 config.value.vdd_mode_table ??= "1920x1080@60\n2560x1440@60\n3840x2160@60"
+
+const blankVddMode = () => ({
+  width: '',
+  height: '',
+  refresh: ''
+})
+
+const parseVddModeTable = (value) => {
+  const rows = `${value ?? ''}`
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(\d+)\s*x\s*(\d+)\s*@\s*(\d+(?:\.\d+)?)$/i)
+      if (match) {
+        return {
+          width: match[1],
+          height: match[2],
+          refresh: match[3]
+        }
+      }
+
+      const parts = line.match(/\d+(?:\.\d+)?/g) ?? []
+      return {
+        width: parts[0] ?? '',
+        height: parts[1] ?? '',
+        refresh: parts[2] ?? ''
+      }
+    })
+
+  return rows.length ? rows : [blankVddMode()]
+}
+
+const serializeVddModeTable = (rows) => rows
+  .filter((row) => row.width || row.height || row.refresh)
+  .map((row) => `${row.width}x${row.height}@${row.refresh}`)
+  .join('\n')
+
+const vddModeRows = ref(parseVddModeTable(config.value.vdd_mode_table))
+
+watch(
+  () => config.value.vdd_mode_table,
+  (value) => {
+    if (serializeVddModeTable(vddModeRows.value) !== `${value ?? ''}`.trim()) {
+      vddModeRows.value = parseVddModeTable(value)
+    }
+  }
+)
+
+watch(
+  vddModeRows,
+  (rows) => {
+    config.value.vdd_mode_table = serializeVddModeTable(rows)
+  },
+  {deep: true}
+)
+
+const addVddModeRow = () => {
+  vddModeRows.value.push(blankVddMode())
+}
+
+const removeVddModeRow = (index) => {
+  vddModeRows.value.splice(index, 1)
+  if (!vddModeRows.value.length) {
+    addVddModeRow()
+  }
+}
+
+const moveVddModeRow = (index, offset) => {
+  const target = index + offset
+  if (target < 0 || target >= vddModeRows.value.length) {
+    return
+  }
+
+  const [row] = vddModeRows.value.splice(index, 1)
+  vddModeRows.value.splice(target, 0, row)
+}
 
 const validateFallbackMode = (event) => {
   const value = event.target.value;
@@ -175,13 +252,77 @@ const validateFallbackMode = (event) => {
     <!-- vdVDD Mode Table -->
     <div class="mb-3" v-if="platform === 'windows'">
       <label for="vdd_mode_table" class="form-label">{{ $tp('config.vdd_mode_table', 'vdVDD resolution mode table') }}</label>
-      <textarea
-        class="form-control font-monospace"
-        id="vdd_mode_table"
-        rows="7"
-        placeholder="1920x1080@60&#10;2560x1440@120&#10;3840x2160@60"
-        v-model="config.vdd_mode_table"
-      ></textarea>
+      <div id="vdd_mode_table" class="vdd-mode-table border rounded overflow-hidden">
+        <div class="vdd-mode-row vdd-mode-header">
+          <div>{{ $tp('config.vdd_mode_width', 'Width') }}</div>
+          <div>{{ $tp('config.vdd_mode_height', 'Height') }}</div>
+          <div>{{ $tp('config.vdd_mode_refresh_rate', 'Hz') }}</div>
+          <div class="text-end">{{ $tp('config.vdd_mode_actions', 'Actions') }}</div>
+        </div>
+        <div class="vdd-mode-row" v-for="(mode, index) in vddModeRows" :key="index">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            class="form-control"
+            inputmode="numeric"
+            placeholder="1920"
+            v-model="mode.width"
+          />
+          <input
+            type="number"
+            min="1"
+            step="1"
+            class="form-control"
+            inputmode="numeric"
+            placeholder="1080"
+            v-model="mode.height"
+          />
+          <input
+            type="number"
+            min="1"
+            step="0.01"
+            class="form-control"
+            inputmode="decimal"
+            placeholder="60"
+            v-model="mode.refresh"
+          />
+          <div class="vdd-mode-actions">
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm"
+              :disabled="index === 0"
+              :title="$tp('config.vdd_mode_move_up', 'Move up')"
+              :aria-label="$tp('config.vdd_mode_move_up', 'Move up')"
+              @click="moveVddModeRow(index, -1)"
+            >
+              <i class="fa-solid fa-arrow-up"></i>
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-secondary btn-sm"
+              :disabled="index === vddModeRows.length - 1"
+              :title="$tp('config.vdd_mode_move_down', 'Move down')"
+              :aria-label="$tp('config.vdd_mode_move_down', 'Move down')"
+              @click="moveVddModeRow(index, 1)"
+            >
+              <i class="fa-solid fa-arrow-down"></i>
+            </button>
+            <button
+              type="button"
+              class="btn btn-outline-danger btn-sm"
+              :title="$tp('config.vdd_mode_remove', 'Remove')"
+              :aria-label="$tp('config.vdd_mode_remove', 'Remove')"
+              @click="removeVddModeRow(index)"
+            >
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-outline-primary btn-sm mt-2" @click="addVddModeRow">
+        <i class="fa-solid fa-plus me-1"></i>{{ $tp('config.vdd_mode_add', 'Add mode') }}
+      </button>
       <div class="form-text">{{ $tp('config.vdd_mode_table_desc', 'One mode per line. Format: WIDTHxHEIGHT@HZ. These modes are applied the next time the driver is enabled.') }}</div>
     </div>
 
@@ -195,4 +336,52 @@ const validateFallbackMode = (event) => {
 </template>
 
 <style scoped>
+.vdd-mode-table {
+  background: var(--bs-body-bg);
+}
+
+.vdd-mode-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 1fr) minmax(88px, 1fr) minmax(76px, .8fr) 124px;
+  gap: .5rem;
+  align-items: center;
+  padding: .5rem;
+}
+
+.vdd-mode-row + .vdd-mode-row {
+  border-top: 1px solid var(--bs-border-color);
+}
+
+.vdd-mode-header {
+  background: var(--bs-tertiary-bg);
+  color: var(--bs-secondary-color);
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.vdd-mode-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 36px);
+  justify-content: end;
+  gap: .25rem;
+}
+
+.vdd-mode-actions .btn {
+  width: 36px;
+}
+
+@media (max-width: 575.98px) {
+  .vdd-mode-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .vdd-mode-header {
+    display: none;
+  }
+
+  .vdd-mode-actions {
+    grid-column: 1 / -1;
+    justify-content: start;
+  }
+}
 </style>
