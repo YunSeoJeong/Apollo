@@ -149,6 +149,7 @@ namespace config {
     std::string fallback_mode;
     bool isolated_virtual_display_option;
     bool ignore_encoder_probe_failure;
+    std::string vdd_mode_table;
   };
 
   struct audio_t {

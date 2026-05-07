@@ -3,8 +3,16 @@
 #include <vector>
 #include <setupapi.h>
 #include <initguid.h>
+#include <devguid.h>
 #include <combaseapi.h>
+#include <filesystem>
+#include <fstream>
+#include <regex>
+#include <set>
+#include <sstream>
+#include <string>
 #include <thread>
+#include <tuple>
 
 #include <wrl/client.h>
 #include <dxgi.h>
@@ -13,6 +21,7 @@
 #include <dxgi1_6.h>
 
 #include "virtual_display.h"
+#include "src/config.h"
 
 using namespace SUDOVDA;
 
@@ -21,6 +30,202 @@ namespace VDISPLAY {
 // static const GUID DEFAULT_DISPLAY_GUID = { 0xdff7fd29, 0x5b75, 0x41d1, { 0x97, 0x31, 0xb3, 0x2a, 0x17, 0xa1, 0x71, 0x04 } };
 
 HANDLE SUDOVDA_DRIVER_HANDLE = INVALID_HANDLE_VALUE;
+
+namespace {
+	enum class driver_backend_e {
+		unknown,
+		sudovda,
+		vdd
+	};
+
+	constexpr const wchar_t *VDD_HARDWARE_ID = L"ROOT\\MTTVDD";
+	constexpr const wchar_t *VDD_DEVICE_DESC = L"Virtual Display Driver";
+	constexpr const wchar_t *VDD_SETTINGS_PATH = L"C:\\VirtualDisplayDriver\\vdd_settings.xml";
+
+	driver_backend_e VDISPLAY_BACKEND = driver_backend_e::unknown;
+
+	bool multiSzContains(const std::vector<wchar_t> &multiSz, const wchar_t *needle) {
+		for (const wchar_t *entry = multiSz.data(); entry && *entry; entry += wcslen(entry) + 1) {
+			if (_wcsicmp(entry, needle) == 0) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool getDeviceRegistryMultiSz(HDEVINFO deviceInfoSet, SP_DEVINFO_DATA &deviceInfoData, DWORD property, std::vector<wchar_t> &value) {
+		DWORD requiredSize = 0;
+		SetupDiGetDeviceRegistryPropertyW(deviceInfoSet, &deviceInfoData, property, nullptr, nullptr, 0, &requiredSize);
+		if (!requiredSize) {
+			return false;
+		}
+
+		value.resize((requiredSize / sizeof(wchar_t)) + 2);
+		if (!SetupDiGetDeviceRegistryPropertyW(deviceInfoSet, &deviceInfoData, property, nullptr, reinterpret_cast<PBYTE>(value.data()), requiredSize, nullptr)) {
+			return false;
+		}
+
+		return true;
+	}
+
+	bool getDeviceRegistryString(HDEVINFO deviceInfoSet, SP_DEVINFO_DATA &deviceInfoData, DWORD property, std::wstring &value) {
+		DWORD requiredSize = 0;
+		SetupDiGetDeviceRegistryPropertyW(deviceInfoSet, &deviceInfoData, property, nullptr, nullptr, 0, &requiredSize);
+		if (!requiredSize) {
+			return false;
+		}
+
+		std::vector<wchar_t> buffer((requiredSize / sizeof(wchar_t)) + 1);
+		if (!SetupDiGetDeviceRegistryPropertyW(deviceInfoSet, &deviceInfoData, property, nullptr, reinterpret_cast<PBYTE>(buffer.data()), requiredSize, nullptr)) {
+			return false;
+		}
+
+		value.assign(buffer.data());
+		return true;
+	}
+
+	bool findVddDevice(HDEVINFO &deviceInfoSet, SP_DEVINFO_DATA &deviceInfoData) {
+		deviceInfoSet = SetupDiGetClassDevsW(&GUID_DEVCLASS_DISPLAY, nullptr, nullptr, 0);
+		if (deviceInfoSet == INVALID_HANDLE_VALUE) {
+			return false;
+		}
+
+		deviceInfoData = {};
+		deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+		for (DWORD index = 0; SetupDiEnumDeviceInfo(deviceInfoSet, index, &deviceInfoData); ++index) {
+			std::vector<wchar_t> hardwareIds;
+			if (getDeviceRegistryMultiSz(deviceInfoSet, deviceInfoData, SPDRP_HARDWAREID, hardwareIds) &&
+			    multiSzContains(hardwareIds, VDD_HARDWARE_ID)) {
+				return true;
+			}
+
+			std::wstring friendlyName;
+			std::wstring deviceDesc;
+			getDeviceRegistryString(deviceInfoSet, deviceInfoData, SPDRP_FRIENDLYNAME, friendlyName);
+			getDeviceRegistryString(deviceInfoSet, deviceInfoData, SPDRP_DEVICEDESC, deviceDesc);
+			if (_wcsicmp(friendlyName.c_str(), VDD_DEVICE_DESC) == 0 || _wcsicmp(deviceDesc.c_str(), VDD_DEVICE_DESC) == 0) {
+				return true;
+			}
+		}
+
+		SetupDiDestroyDeviceInfoList(deviceInfoSet);
+		deviceInfoSet = INVALID_HANDLE_VALUE;
+		return false;
+	}
+
+	bool setVddDeviceEnabled(bool enabled) {
+		HDEVINFO deviceInfoSet = INVALID_HANDLE_VALUE;
+		SP_DEVINFO_DATA deviceInfoData {};
+		if (!findVddDevice(deviceInfoSet, deviceInfoData)) {
+			printf("[VDD] Virtual Display Driver PnP device not found.\n");
+			return false;
+		}
+
+		SP_PROPCHANGE_PARAMS params {};
+		params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+		params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+		params.StateChange = enabled ? DICS_ENABLE : DICS_DISABLE;
+		params.Scope = DICS_FLAG_GLOBAL;
+		params.HwProfile = 0;
+
+		const auto paramsSet = SetupDiSetClassInstallParamsW(
+			deviceInfoSet,
+			&deviceInfoData,
+			reinterpret_cast<SP_CLASSINSTALL_HEADER *>(&params),
+			sizeof(params)
+		);
+		const auto changed = paramsSet && SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+		SetupDiDestroyDeviceInfoList(deviceInfoSet);
+
+		if (!changed) {
+			printf("[VDD] Failed to %s Virtual Display Driver PnP device. Error: %lu\n", enabled ? "enable" : "disable", GetLastError());
+			return false;
+		}
+
+		printf("[VDD] Virtual Display Driver PnP device %s.\n", enabled ? "enabled" : "disabled");
+		return true;
+	}
+
+	bool isVddInstalled() {
+		HDEVINFO deviceInfoSet = INVALID_HANDLE_VALUE;
+		SP_DEVINFO_DATA deviceInfoData {};
+		if (!findVddDevice(deviceInfoSet, deviceInfoData)) {
+			return false;
+		}
+
+		SetupDiDestroyDeviceInfoList(deviceInfoSet);
+		return true;
+	}
+
+	std::string sanitizeXmlText(std::string value) {
+		std::erase(value, '\r');
+		return value;
+	}
+
+	void writeVddSettings(uint32_t width, uint32_t height, uint32_t fps) {
+		std::set<std::tuple<uint32_t, uint32_t, uint32_t>> modes;
+		const auto add_mode = [&modes](uint32_t w, uint32_t h, uint32_t hz) {
+			if (w >= 320 && h >= 240 && hz >= 1 && hz <= 1000) {
+				modes.emplace(w, h, hz);
+			}
+		};
+
+		add_mode(width, height, fps);
+
+		std::regex modePattern(R"(^\s*(\d+)x(\d+)@(\d+)\s*$)");
+		std::stringstream modeTable(sanitizeXmlText(config::video.vdd_mode_table));
+		std::string line;
+		while (std::getline(modeTable, line)) {
+			std::smatch match;
+			if (!std::regex_match(line, match, modePattern)) {
+				continue;
+			}
+
+			add_mode(std::stoul(match[1].str()), std::stoul(match[2].str()), std::stoul(match[3].str()));
+		}
+
+		std::filesystem::create_directories(L"C:\\VirtualDisplayDriver");
+		std::ofstream settings(std::filesystem::path(VDD_SETTINGS_PATH), std::ios::trunc);
+		if (!settings) {
+			printf("[VDD] Failed to open vdd_settings.xml for writing.\n");
+			return;
+		}
+
+		settings << "<?xml version='1.0' encoding='utf-8'?>\n"
+		         << "<vdd_settings>\n"
+		         << "  <monitors>\n"
+		         << "    <count>1</count>\n"
+		         << "  </monitors>\n"
+		         << "  <gpu>\n"
+		         << "    <friendlyname>default</friendlyname>\n"
+		         << "  </gpu>\n"
+		         << "  <global>\n"
+		         << "  </global>\n"
+		         << "  <resolutions>\n";
+
+		for (const auto &[mode_width, mode_height, mode_fps] : modes) {
+			settings << "    <resolution>\n"
+			         << "      <width>" << mode_width << "</width>\n"
+			         << "      <height>" << mode_height << "</height>\n"
+			         << "      <refresh_rate>" << mode_fps << "</refresh_rate>\n"
+			         << "    </resolution>\n";
+		}
+
+		settings << "  </resolutions>\n"
+		         << "  <options>\n"
+		         << "    <CustomEdid>false</CustomEdid>\n"
+		         << "    <PreventSpoof>false</PreventSpoof>\n"
+		         << "    <EdidCeaOverride>false</EdidCeaOverride>\n"
+		         << "    <HardwareCursor>true</HardwareCursor>\n"
+		         << "    <SDR10bit>false</SDR10bit>\n"
+		         << "    <HDRPlus>false</HDRPlus>\n"
+		         << "    <logging>false</logging>\n"
+		         << "    <debuglogging>false</debuglogging>\n"
+		         << "  </options>\n"
+		         << "</vdd_settings>\n";
+	}
+}
 
 // START ISOLATED DISPLAY DECLARATIONS
 struct positionwidthheight;
@@ -581,16 +786,23 @@ void closeVDisplayDevice() {
 	CloseHandle(SUDOVDA_DRIVER_HANDLE);
 
 	SUDOVDA_DRIVER_HANDLE = INVALID_HANDLE_VALUE;
+	VDISPLAY_BACKEND = driver_backend_e::unknown;
 }
 
 DRIVER_STATUS openVDisplayDevice() {
+	if (isVddInstalled()) {
+		printf("[VDD] Virtual Display Driver PnP backend found.\n");
+		VDISPLAY_BACKEND = driver_backend_e::vdd;
+		return DRIVER_STATUS::OK;
+	}
+
 	uint32_t retryInterval = 20;
 	while (true) {
 		SUDOVDA_DRIVER_HANDLE = OpenDevice(&SUVDA_INTERFACE_GUID);
 		if (SUDOVDA_DRIVER_HANDLE == INVALID_HANDLE_VALUE) {
 			if (retryInterval > 320) {
 				printf("[SUDOVDA] Open device failed!\n");
-				return DRIVER_STATUS::FAILED;
+				break;
 			}
 			retryInterval *= 2;
 			Sleep(retryInterval);
@@ -600,18 +812,32 @@ DRIVER_STATUS openVDisplayDevice() {
 		break;
 	}
 
+	if (SUDOVDA_DRIVER_HANDLE == INVALID_HANDLE_VALUE) {
+		return DRIVER_STATUS::FAILED;
+	}
+
 	if (!CheckProtocolCompatible(SUDOVDA_DRIVER_HANDLE)) {
 		printf("[SUDOVDA] SUDOVDA protocol not compatible with driver!\n");
 		closeVDisplayDevice();
+		if (isVddInstalled()) {
+			printf("[VDD] Falling back to Virtual Display Driver PnP backend.\n");
+			VDISPLAY_BACKEND = driver_backend_e::vdd;
+			return DRIVER_STATUS::OK;
+		}
 		return DRIVER_STATUS::VERSION_INCOMPATIBLE;
 	}
 
-	return DRIVER_STATUS::OK;
+	if (SUDOVDA_DRIVER_HANDLE != INVALID_HANDLE_VALUE) {
+		VDISPLAY_BACKEND = driver_backend_e::sudovda;
+		return DRIVER_STATUS::OK;
+	}
+
+	return DRIVER_STATUS::FAILED;
 }
 
 bool startPingThread(std::function<void()> failCb) {
 	if (SUDOVDA_DRIVER_HANDLE == INVALID_HANDLE_VALUE) {
-		return false;
+		return VDISPLAY_BACKEND == driver_backend_e::vdd;
 	}
 
 	VIRTUAL_DISPLAY_GET_WATCHDOG_OUT watchdogOut;
@@ -647,7 +873,7 @@ bool startPingThread(std::function<void()> failCb) {
 
 bool setRenderAdapterByName(const std::wstring& adapterName) {
 	if (SUDOVDA_DRIVER_HANDLE == INVALID_HANDLE_VALUE) {
-		return false;
+		return VDISPLAY_BACKEND == driver_backend_e::vdd;
 	}
 
 	Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
@@ -686,6 +912,30 @@ std::wstring createVirtualDisplay(
 	const GUID& guid
 ) {
 	if (SUDOVDA_DRIVER_HANDLE == INVALID_HANDLE_VALUE) {
+		if (VDISPLAY_BACKEND != driver_backend_e::vdd) {
+			return std::wstring();
+		}
+
+		const auto refresh_rate_hz = fps >= 1000 ? fps / 1000 : fps;
+		writeVddSettings(width, height, refresh_rate_hz);
+		setVddDeviceEnabled(false);
+		if (!setVddDeviceEnabled(true)) {
+			return std::wstring();
+		}
+
+		uint32_t retryInterval = 100;
+		while (retryInterval <= 3200) {
+			auto matches = matchDisplay(VDD_DEVICE_DESC);
+			if (!matches.empty()) {
+				wprintf(L"[VDD] Virtual display enabled successfully: %ls\n", matches.front().c_str());
+				return matches.front();
+			}
+
+			Sleep(retryInterval);
+			retryInterval *= 2;
+		}
+
+		printf("[VDD] Virtual display device was enabled, but no active display name was found.\n");
 		return std::wstring();
 	}
 
@@ -714,7 +964,7 @@ std::wstring createVirtualDisplay(
 
 bool removeVirtualDisplay(const GUID& guid) {
 	if (SUDOVDA_DRIVER_HANDLE == INVALID_HANDLE_VALUE) {
-		return false;
+		return VDISPLAY_BACKEND == driver_backend_e::vdd && setVddDeviceEnabled(false);
 	}
 
 	if (RemoveVirtualDisplay(SUDOVDA_DRIVER_HANDLE, guid)) {

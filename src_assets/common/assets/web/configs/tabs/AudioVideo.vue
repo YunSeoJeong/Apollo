@@ -8,7 +8,8 @@ import DisplayDeviceOptions from "./audiovideo/DisplayDeviceOptions.vue";
 import DisplayModesSettings from "./audiovideo/DisplayModesSettings.vue";
 import Checkbox from "../../Checkbox.vue";
 
-const $t = inject('i18n').t;
+const i18n = inject('i18n');
+const $t = i18n?.t ?? ((key) => key);
 
 const props = defineProps([
   'platform',
@@ -27,7 +28,8 @@ const sudovdaStatus = {
 
 const currentDriverStatus = computed(() => sudovdaStatus[props.vdisplay])
 
-const config = ref(props.config)
+const config = ref(props.config ?? {})
+config.value.vdd_mode_table ??= "1920x1080@60\n2560x1440@60\n3840x2160@60"
 
 const validateFallbackMode = (event) => {
   const value = event.target.value;
@@ -170,11 +172,24 @@ const validateFallbackMode = (event) => {
               v-if="platform === 'windows'"
     ></Checkbox>
 
+    <!-- vdVDD Mode Table -->
+    <div class="mb-3" v-if="platform === 'windows'">
+      <label for="vdd_mode_table" class="form-label">{{ $tp('config.vdd_mode_table', 'vdVDD resolution mode table') }}</label>
+      <textarea
+        class="form-control font-monospace"
+        id="vdd_mode_table"
+        rows="7"
+        placeholder="1920x1080@60&#10;2560x1440@120&#10;3840x2160@60"
+        v-model="config.vdd_mode_table"
+      ></textarea>
+      <div class="form-text">{{ $tp('config.vdd_mode_table_desc', 'One mode per line. Format: WIDTHxHEIGHT@HZ. These modes are applied the next time the driver is enabled.') }}</div>
+    </div>
+
     <!-- SudoVDA Driver Status -->
     <div class="alert" :class="[vdisplay ? 'alert-warning' : 'alert-success']" v-if="platform === 'windows'">
-      <i class="fa-solid fa-xl fa-circle-info"></i> SudoVDA Driver status: {{currentDriverStatus}}
+      <i class="fa-solid fa-xl fa-circle-info"></i> Virtual Display Driver status: {{currentDriverStatus}}
     </div>
-    <div class="form-text" v-if="platform === 'windows' && vdisplay">Please ensure SudoVDA driver is installed to the latest version and enabled properly.</div>
+    <div class="form-text" v-if="platform === 'windows' && vdisplay">Please ensure the virtual display driver is installed to the latest version and enabled properly.</div>
 
   </div>
 </template>

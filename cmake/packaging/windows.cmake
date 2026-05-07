@@ -18,17 +18,39 @@ install(FILES ${VIGEMBUS_INSTALLER}
         RENAME "vigembus_installer.exe"
         COMPONENT gamepad)
 
+# vdVDD driver package and NefCon helper
+set(VDD_CONTROL_ZIP "${CMAKE_BINARY_DIR}/vdd_control.zip")
+file(DOWNLOAD
+        "https://github.com/VirtualDrivers/Virtual-Display-Driver/releases/download/25.7.23/VDD.Control.25.7.23.zip"
+        ${VDD_CONTROL_ZIP}
+        SHOW_PROGRESS
+        EXPECTED_HASH SHA256=a701f2272e9fcf382849b24f913c6dd07597b3b1116525f2e90182f019609154
+        TIMEOUT 120
+)
+install(FILES ${VDD_CONTROL_ZIP}
+        DESTINATION "scripts"
+        RENAME "vdd_control.zip"
+        COMPONENT vdd)
+
+set(NEFCON_ZIP "${CMAKE_BINARY_DIR}/nefcon.zip")
+file(DOWNLOAD
+        "https://github.com/nefarius/nefcon/releases/download/v1.14.0/nefcon_v1.14.0.zip"
+        ${NEFCON_ZIP}
+        SHOW_PROGRESS
+        EXPECTED_HASH SHA256=a15557da24a9efca203158de3b43b0eaf982db231f0194031f1ed428bc13e669
+        TIMEOUT 60
+)
+install(FILES ${NEFCON_ZIP}
+        DESTINATION "scripts"
+        RENAME "nefcon.zip"
+        COMPONENT vdd)
+
 # Adding tools
 install(TARGETS dxgi-info RUNTIME DESTINATION "tools" COMPONENT dxgi)
 install(TARGETS audio-info RUNTIME DESTINATION "tools" COMPONENT audio)
 
 # Mandatory tools
 install(TARGETS sunshinesvc RUNTIME DESTINATION "tools" COMPONENT application)
-
-# Drivers
-install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/drivers/sudovda"
-        DESTINATION "drivers"
-        COMPONENT sudovda)
 
 # Mandatory scripts
 install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/service/"
@@ -53,6 +75,9 @@ install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/firewall/"
 install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/gamepad/"
         DESTINATION "scripts"
         COMPONENT gamepad)
+install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/misc/vdd/"
+        DESTINATION "scripts"
+        COMPONENT vdd)
 
 # Sunshine assets
 install(DIRECTORY "${SUNSHINE_SOURCE_ASSETS_DIR}/windows/assets/"
@@ -96,10 +121,10 @@ set(CPACK_COMPONENT_ASSETS_GROUP "Core")
 set(CPACK_COMPONENT_ASSETS_REQUIRED true)
 
 # drivers
-set(CPACK_COMPONENT_SUDOVDA_DISPLAY_NAME "SudoVDA")
-set(CPACK_COMPONENT_SUDOVDA_DESCRIPTION "Driver required for Virtual Display to function.")
-set(CPACK_COMPONENT_SUDOVDA_GROUP "Drivers")
-set(CPACK_COMPONENT_SUDOVDA_REQUIRED true)
+set(CPACK_COMPONENT_VDD_DISPLAY_NAME "vdVDD")
+set(CPACK_COMPONENT_VDD_DESCRIPTION "Driver required for Virtual Display to function.")
+set(CPACK_COMPONENT_VDD_GROUP "Drivers")
+set(CPACK_COMPONENT_VDD_REQUIRED true)
 
 # audio tool
 set(CPACK_COMPONENT_AUDIO_DISPLAY_NAME "audio-info")

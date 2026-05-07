@@ -213,6 +213,7 @@
               "max_bitrate": 0,
               "minimum_fps_target": 0,
               "isolated_virtual_display_option": "disabled",
+              "vdd_mode_table": "1920x1080@60\n2560x1440@60\n3840x2160@60",
             },
           },
           {
@@ -379,6 +380,7 @@
           this.config.global_prep_cmd ??= [];
           this.config.global_state_cmd ??= [];
           this.config.server_cmd ??= [];
+          this.config.vdd_mode_table ??= "1920x1080@60\n2560x1440@60\n3840x2160@60";
 
           // Populate default values from tabs options
           this.tabs.forEach(tab => {
